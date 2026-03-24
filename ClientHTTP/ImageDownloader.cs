@@ -20,7 +20,7 @@ public static class ImageDownloader
             try
             {
                 byte[] imageBytes = await client.GetByteArrayAsync(imageUri);
-                File.WriteAllBytes(downloadPath + imageUri.Segments.Last(), imageBytes);
+                await File.WriteAllBytesAsync(downloadPath + imageUri.Segments.Last(), imageBytes);
             }
             catch (Exception ex)
             {
