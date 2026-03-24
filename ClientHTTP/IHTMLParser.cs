@@ -2,5 +2,5 @@
 
 public interface IHTMLParser
 {
-    public Task ParseHTMLAsync(string html);
+    public Task ParseHTMLAsync(string html, Uri uri);
 }
