@@ -35,6 +35,12 @@ internal class Program
         string host = Console.ReadLine()!.Trim();
         queryBuilder.DefineHost(host);
 
+        queryBuilder.OnServerResponse += async (body) =>
+        {
+            if (Uri.TryCreate(host, UriKind.Absolute, out Uri? uri))
+                await ResourceSerializer.SerializeAllResources(uri!, body, uri!.Host.ToString() + "/");
+        };
+
         _ = queryBuilder.SendAsync();
 
         Console.ReadLine();

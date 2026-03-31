@@ -15,6 +15,7 @@ public static class ImageDownloader
 
     public static async Task DownloadImageAsync(Uri imageUri, string downloadPath)
     {
+        Console.WriteLine("Downloading image at " + imageUri.ToString() + " to " + downloadPath);
         using (HttpClient client = new())
         {
             try

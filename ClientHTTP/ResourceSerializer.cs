@@ -27,6 +27,7 @@ public static class ResourceSerializer
 
     public static async Task DownloadRelatedResourcesAsync(Uri uri, string html, string downloadPath)
     {
+        Console.WriteLine("Downloading all resources related to " + uri.ToString() + " on local " + downloadPath);
         List<string> imageLinks = _imageParser.ParseHTML(html);
         List<Uri> imageUris = new();
         foreach (string imageLink in imageLinks)
@@ -38,5 +39,15 @@ public static class ResourceSerializer
         }
         await ImageDownloader.DownloadImagesAsync(imageUris, downloadPath);
         // TODO: Add the download of other resources
+    }
+
+    public static async Task SerializeAllResources(Uri uri, string html, string downloadPath)
+    {
+        Console.WriteLine("Downloading all at " + uri.ToString());
+        Directory.CreateDirectory(downloadPath);
+        await Task.WhenAll(
+            File.WriteAllTextAsync(downloadPath, html),
+            DownloadRelatedResourcesAsync(uri, html, downloadPath)
+        );
     }
 }
