@@ -1,4 +1,7 @@
 ﻿using ClientHTTP.Parser;
+using ClientHTTP.QueryBuilder;
+using ClientHTTP.QueryBuilder.QueryMetadata;
+using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
 
 namespace ClientHTTP;
 public static class ResourceSerializer
@@ -37,8 +40,53 @@ public static class ResourceSerializer
             else
                 imageUris.Add(new(uri, imageLink));
         }
-        await ImageDownloader.DownloadImagesAsync(imageUris, downloadPath);
-        // TODO: Add the download of other resources
+
+        List<string> resourceLinks = _allResourceParser.ParseHTML(html);
+        List<Uri> resourceUris = new();
+        foreach (string resourceLink in resourceLinks)
+        {
+            if (resourceLink.StartsWith("http"))
+                resourceUris.Add(new(resourceLink));
+            else
+                resourceUris.Add(new(uri, resourceLink));
+        }
+
+        var fetchAllResources = async () =>
+        {
+            List<Task> tasks = new();
+            foreach (Uri uri in resourceUris)
+            {
+                HTTPQueryBuilder httpQueryBuilder = new HTTPQueryBuilder(index: uri.AbsolutePath.ToString())
+                    .DefineHost(uri.Scheme + "://" + uri.Host)
+                    .DefineConnection("close")
+                    .DefineUserAgent(
+                        new SafariBrowser(
+                            new ChromeBrowser(
+                                new Engine(
+                                    new QueryBuilder.QueryMetadata.SystemMetadata.OperatingSystem(
+                                        new Mozilla(
+                                            new UserAgent()
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+                httpQueryBuilder.OnServerResponse += async (data) =>
+                {
+                    await File.WriteAllTextAsync(downloadPath + uri.Segments.Last(), data);
+                };
+
+                tasks.Add(httpQueryBuilder.SendAsync());
+            }
+            await Task.WhenAll(tasks);
+        };
+
+        await Task.WhenAll(
+            ImageDownloader.DownloadImagesAsync(imageUris, downloadPath),
+            fetchAllResources()
+        );
     }
 
     public static async Task SerializeAllResources(Uri uri, string html, string downloadPath)
@@ -46,7 +94,7 @@ public static class ResourceSerializer
         Console.WriteLine("Downloading all at " + uri.ToString());
         Directory.CreateDirectory(downloadPath);
         await Task.WhenAll(
-            File.WriteAllTextAsync(downloadPath, html),
+            File.WriteAllTextAsync(downloadPath + "index.html", html),
             DownloadRelatedResourcesAsync(uri, html, downloadPath)
         );
     }
