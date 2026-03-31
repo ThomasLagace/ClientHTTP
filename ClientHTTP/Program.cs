@@ -39,6 +39,12 @@ internal class Program
                 Console.WriteLine(body);
             };
 
+            queryBuilder.OnServerResponse += async (body) =>
+            {
+                if (Uri.TryCreate(host, UriKind.Absolute, out Uri? uri))
+                    await ResourceSerializer.SerializeAllResources(uri!, body, uri!.Host.ToString() + "/");
+            };
+
             await queryBuilder.SendAsync();
 
             Console.ReadLine();
