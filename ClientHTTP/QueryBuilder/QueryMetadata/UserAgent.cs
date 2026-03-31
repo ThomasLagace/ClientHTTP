@@ -1,18 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
 
 namespace ClientHTTP.QueryBuilder.QueryMetadata
 {
-    public class UserAgent
+    public class UserAgent : SystemInfo
     {
-        public string Browser { get; init; }
-
-        public UserAgent(string browser) 
+        public string Stringify()
         {
-            Browser = browser;
+            return "User-Agent:";
         }
     }
 }

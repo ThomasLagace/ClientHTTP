@@ -1,18 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ClientHTTP.QueryBuilder.QueryMetadata
+﻿namespace ClientHTTP.QueryBuilder.QueryMetadata
 {
     public class Host
     {
-        public string Domain { get; init; }
+        public Uri Domain { get; init; }
 
-        public Host(string domain) 
+        public Host(Uri domain) 
         {
             Domain = domain;
+        }
+
+        public string Stringify()
+        {
+            return "Host: " + Domain.Host;
         }
     }
 }

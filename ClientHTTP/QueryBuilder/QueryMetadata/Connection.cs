@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ClientHTTP.QueryBuilder.QueryMetadata
+﻿namespace ClientHTTP.QueryBuilder.QueryMetadata
 {
     public class Connection
     {
@@ -13,6 +7,11 @@ namespace ClientHTTP.QueryBuilder.QueryMetadata
         public Connection(string behaviour)
         {
             Behaviour = behaviour;
+        }
+
+        public string Stringify() 
+        {
+            return "Connection: " + Behaviour;
         }
     }
 }

@@ -1,44 +1,52 @@
-﻿using ClientHTTP.QueryBuilder.QueryMetadata;
+﻿using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ClientHTTP.QueryBuilder
 {
-    public class HTTPQueryBuilder
+    public class HTTPQueryBuilder(string method = "GET", string index = "/", string protocolVersion = "HTTP/1.1")
     {
-        public string ProtocolVersion { get; init; }
+        public string ProtocolVersion { get; init; } = protocolVersion;
+        public string Index { get; init; } = index;
+        public string Method { get; init; } = method;
         private readonly Query _query = new();
-
-        public HTTPQueryBuilder(string protocolVersion = "HTTP/1.1")
-        {
-            ProtocolVersion = protocolVersion;
-        }
+        public event Action<string>? OnServerResponse;
 
         public async Task SendAsync()
         {
-            if (!TryBuildQuery(out string query)) return;
+            if (!TryBuildQuery(out string query)) 
+                return;
 
+            Console.WriteLine("Sending query:\n" + query);
 
-        }
+            using TcpClient client = new TcpClient(_query.Host!.Domain.Host, _query.Host!.Domain.Port);
+            Stream stream = client.GetStream();
 
-        public HTTPQueryBuilder DefineMethod(Method method)
-        {
-            this._query.SetMethod(method);
-            return this;
-        }
+            string response;
 
-        public HTTPQueryBuilder DefineIndex(string path)
-        {
-            this._query.SetIndex(path);
-            return this;
+            if (_query.Host!.Domain.Scheme == Uri.UriSchemeHttps)
+            {
+                response = await HandleHttpsAsync(stream, _query.Host!.Domain, query);
+            }
+            else
+            {
+                response = await HandleHttpAsync(stream, query);
+            }
+
+            OnServerResponse?.Invoke(response);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
         {
-            this._query.SetHost(host);
+            if (!Uri.TryCreate(host, UriKind.Absolute, out Uri? uri)) 
+            {
+                Console.WriteLine("Invalid URL.");
+            }
+
+            this._query.SetHost(uri!);
             return this;
         }
 
@@ -48,31 +56,35 @@ namespace ClientHTTP.QueryBuilder
             return this;
         }
 
-        public HTTPQueryBuilder DefineUserAgent(string browser)
+        public HTTPQueryBuilder DefineUserAgent(SystemInfo info)
         {
-            //make builder via SupportedBrowsers
-
-            this._query.SetUserAgent(browser);
+            this._query.SetUserAgent(info);
             return this;
         }
 
-        private bool TryBuildQuery(out string queryString) 
+        private bool IsQueryValid()
         {
-            queryString = string.Empty;
-
-            if (String.IsNullOrEmpty(_query.Method?.GetCommand()))
+            if (String.IsNullOrEmpty(Method))
             {
                 Console.WriteLine("Query dropped - Method unspecified.");
                 return false;
             }
 
-            if (String.IsNullOrEmpty(_query.Index?.Path))
+            if (String.IsNullOrEmpty(Index))
             {
                 Console.WriteLine("Query dropped - Index path unspecified.");
                 return false;
             }
 
-            if (String.IsNullOrEmpty(_query.Host?.Domain))
+            if (String.IsNullOrEmpty(ProtocolVersion))
+            {
+                Console.WriteLine("Query dropped - Protocol version unspecified.");
+                return false;
+            }
+
+            if (_query.Host?.Domain == null
+                || (_query.Host!.Domain.Scheme != Uri.UriSchemeHttp
+                && _query.Host!.Domain.Scheme != Uri.UriSchemeHttps))
             {
                 Console.WriteLine("Query dropped - Host domain unspecified.");
                 return false;
@@ -84,23 +96,64 @@ namespace ClientHTTP.QueryBuilder
                 return false;
             }
 
-            //format full query in queryString
+            if (String.IsNullOrEmpty(_query.UserAgent?.Stringify())
+                || _query.UserAgent?.Stringify() == "User-Agent:") 
+            {
+                Console.WriteLine("Query dropped - User agents unspecified.");
+                return false;
+            }
 
             return true;
         }
 
-        private async Task HandleResponseAsync(string response) 
+        private bool TryBuildQuery(out string queryString)
         {
-            
+            queryString = string.Empty;
+
+            if (!IsQueryValid())
+                return false;
+
+            queryString += $"{Method} {Index} {ProtocolVersion}\r\n";
+            queryString += $"{_query.Host?.Stringify()}\r\n";
+            queryString += $"{_query.Connection?.Stringify()}\r\n";
+            queryString += $"{_query.UserAgent?.Stringify()}\r\n";
+            queryString += "\r\n";
+
+            return true;
         }
 
-        private async Task ParseHttpAsync() 
+        private static async Task<string> HandleHttpAsync(Stream stream, string query)
         {
+            using StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
+            await writer.WriteAsync(query);
 
+            using StreamReader reader = new StreamReader(stream, new UTF8Encoding(false));
+            string response = await reader.ReadToEndAsync();
+
+            return response;
         }
-        private async Task ParseHttpsAsync() 
+
+        private static async Task<string> HandleHttpsAsync(Stream stream, Uri uri, string query)
         {
-        
+            SslStream sslStream = new SslStream(stream, false,
+                new RemoteCertificateValidationCallback(ValidateServerCertificate!), null);
+
+            sslStream.AuthenticateAsClient(uri.Host);
+            stream = sslStream;
+
+            using StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
+            await writer.WriteAsync(query);
+
+            using StreamReader reader = new StreamReader(stream, new UTF8Encoding(false));
+            string response = await reader.ReadToEndAsync();
+
+            return response;
+        }
+
+        private static bool ValidateServerCertificate(object sender, X509Certificate certificate,
+            X509Chain chain, SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
         }
     }
 }
