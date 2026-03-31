@@ -36,7 +36,7 @@ namespace ClientHTTP.QueryBuilder
                 response = await HandleHttpAsync(stream, query);
             }
 
-            OnServerResponse?.Invoke(response);
+            OnServerResponse?.Invoke(response.Split("\r\n\r\n")[1]);
         }
 
         public HTTPQueryBuilder DefineHost(string host)

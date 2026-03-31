@@ -27,7 +27,7 @@ internal class Program
         queryBuilder.OnServerResponse += (response) =>
         {
             Console.WriteLine("Response received:");
-            Console.WriteLine(response.Split("\r\n")[0]);
+            Console.WriteLine(response);
         };
 
         Console.WriteLine("Enter HTTP/HTTPS URL:");
