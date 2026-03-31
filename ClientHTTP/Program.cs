@@ -6,9 +6,14 @@ namespace ClientHTTP;
 
 internal class Program
 {
-    static void Main(string[] args)
+    public static void Main(string[] args)
     {
-        HTTPQueryBuilder queryBuilder = new HTTPQueryBuilder()
+        string host = "";
+        HTTPQueryBuilder queryBuilder;
+
+        while (true)
+        {
+            queryBuilder = new HTTPQueryBuilder()
             .DefineConnection("close")
             .DefineUserAgent(
                 new SafariBrowser(
@@ -24,19 +29,46 @@ internal class Program
                     )
                 );
 
-        queryBuilder.OnServerResponse += (response) =>
-        {
-            Console.WriteLine("Response received:");
-            Console.WriteLine(response);
-        };
+            queryBuilder.OnServerResponse += (body) =>
+            {
+                Console.WriteLine("Response received:");
+                Console.WriteLine(body);
 
-        Console.WriteLine("Enter HTTP/HTTPS URL:");
+                host = "";
+            };
 
-        string host = Console.ReadLine()!.Trim();
-        queryBuilder.DefineHost(host);
+            queryBuilder.OnRedirect += async (location) =>
+            {
+                Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
 
-        _ = queryBuilder.SendAsync();
+                string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
 
-        Console.ReadLine();
+                if (shouldRedirect == "YES") 
+                {
+                    queryBuilder.DefineHost(location);
+                    await queryBuilder.SendAsync();
+                }
+            };
+
+            if (host == "")
+            {
+                Console.WriteLine("Search HTTP/HTTPS URL:");
+
+                host = Console.ReadLine()!.Trim();
+            }
+
+            if (host == "exit") 
+            {
+                break;
+            }
+
+            queryBuilder.DefineHost(host);
+            _ = queryBuilder.SendAsync();
+
+            Console.ReadLine();
+
+            Console.Clear();
+            host = "";
+        }
     }
 }
