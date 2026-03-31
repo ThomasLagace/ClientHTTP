@@ -78,7 +78,7 @@ public static class ResourceSerializer
                     await File.WriteAllTextAsync(downloadPath + uri.Segments.Last(), data);
                 };
 
-                tasks.Add(httpQueryBuilder.SendAsync());
+                tasks.Add(httpQueryBuilder.SendAsync(true));
             }
             await Task.WhenAll(tasks);
         };

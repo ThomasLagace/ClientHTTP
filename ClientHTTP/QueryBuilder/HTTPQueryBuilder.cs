@@ -15,7 +15,7 @@ namespace ClientHTTP.QueryBuilder
         private readonly Query _query = new();
         public event Action<string>? OnServerResponse;
 
-        public async Task SendAsync()
+        public async Task SendAsync(bool autoRedirect = false)
         {
             if (!TryBuildQuery(out string query)) 
                 return;
@@ -39,7 +39,7 @@ namespace ClientHTTP.QueryBuilder
             string[] splitResponse = response.Split("\r\n\r\n");
 
             OnServerResponse?.Invoke(splitResponse[1]);
-            await HandleResponse(splitResponse[0]);
+            await HandleResponse(splitResponse[0], autoRedirect);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
@@ -125,7 +125,7 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
-        private async Task HandleResponse(string header) 
+        private async Task HandleResponse(string header, bool autoRedirect)
         {
             string responseCode = header.Split("\r\n")[0].Split(' ')[1];
 
@@ -139,15 +139,18 @@ namespace ClientHTTP.QueryBuilder
                 case '3':
                     Console.WriteLine("Redirect\n");
 
-                    string location = GetRedirectLocation(header)!;
-                    Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
-
-                    string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
-
-                    if (shouldRedirect == "YES") 
+                    if (!autoRedirect) 
                     {
-                        DefineHost(location);
-                        await SendAsync();
+                        string location = GetRedirectLocation(header)!;
+                        Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
+
+                        string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
+
+                        if (shouldRedirect == "YES")
+                        {
+                            DefineHost(location);
+                            await SendAsync();
+                        }
                     }
                     break;
                 case '4':
