@@ -14,7 +14,6 @@ namespace ClientHTTP.QueryBuilder
         public string Method { get; init; } = method;
         private readonly Query _query = new();
         public event Action<string>? OnServerResponse;
-        public event Action<string>? OnRedirect;
 
         public async Task SendAsync()
         {
@@ -40,7 +39,7 @@ namespace ClientHTTP.QueryBuilder
             string[] splitResponse = response.Split("\r\n\r\n");
 
             OnServerResponse?.Invoke(splitResponse[1]);
-            HandleResponse(splitResponse[0]);
+            await HandleResponse(splitResponse[0]);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
@@ -126,7 +125,7 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
-        private void HandleResponse(string header) 
+        private async Task HandleResponse(string header) 
         {
             string responseCode = header.Split("\r\n")[0].Split(' ')[1];
 
@@ -139,7 +138,17 @@ namespace ClientHTTP.QueryBuilder
                     break;
                 case '3':
                     Console.WriteLine("Redirect\n");
-                    OnRedirect?.Invoke(GetRedirectLocation(header)!);
+
+                    string location = GetRedirectLocation(header)!;
+                    Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
+
+                    string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
+
+                    if (shouldRedirect == "YES") 
+                    {
+                        DefineHost(location);
+                        await SendAsync();
+                    }
                     break;
                 case '4':
                     Console.WriteLine("Client error\n");

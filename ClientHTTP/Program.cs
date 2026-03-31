@@ -6,15 +6,19 @@ namespace ClientHTTP;
 
 internal class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
-        string host = "";
-        HTTPQueryBuilder queryBuilder;
-
-        while (true)
+        while (true) 
         {
-            queryBuilder = new HTTPQueryBuilder()
+            Console.Clear();
+
+            Console.WriteLine("Search HTTP/HTTPS URL:");
+
+            string host = Console.ReadLine()!.Trim();
+
+            HTTPQueryBuilder queryBuilder = new HTTPQueryBuilder()
             .DefineConnection("close")
+            .DefineHost(host)
             .DefineUserAgent(
                 new SafariBrowser(
                     new ChromeBrowser(
@@ -31,44 +35,13 @@ internal class Program
 
             queryBuilder.OnServerResponse += (body) =>
             {
-                Console.WriteLine("Response received:");
+                Console.WriteLine("Response received:\n");
                 Console.WriteLine(body);
-
-                host = "";
             };
 
-            queryBuilder.OnRedirect += async (location) =>
-            {
-                Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
-
-                string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
-
-                if (shouldRedirect == "YES") 
-                {
-                    queryBuilder.DefineHost(location);
-                    await queryBuilder.SendAsync();
-                }
-            };
-
-            if (host == "")
-            {
-                Console.WriteLine("Search HTTP/HTTPS URL:");
-
-                host = Console.ReadLine()!.Trim();
-            }
-
-            if (host == "exit") 
-            {
-                break;
-            }
-
-            queryBuilder.DefineHost(host);
-            _ = queryBuilder.SendAsync();
+            await queryBuilder.SendAsync();
 
             Console.ReadLine();
-
-            Console.Clear();
-            host = "";
         }
     }
 }
