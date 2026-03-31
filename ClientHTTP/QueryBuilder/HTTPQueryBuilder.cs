@@ -36,7 +36,10 @@ namespace ClientHTTP.QueryBuilder
                 response = await HandleHttpAsync(stream, query);
             }
 
-            OnServerResponse?.Invoke(response.Split("\r\n\r\n")[1]);
+            string[] splitResponse = response.Split("\r\n\r\n");
+
+            OnServerResponse?.Invoke(splitResponse[1]);
+            await HandleResponse(splitResponse[0]);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
@@ -122,6 +125,40 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
+        private async Task HandleResponse(string header) 
+        {
+            string responseCode = header.Split("\r\n")[0].Split(' ')[1];
+
+            Console.Write(responseCode + " - ");
+
+            switch (responseCode[0]) 
+            {
+                case '2':
+                    Console.WriteLine("Success\n");
+                    break;
+                case '3':
+                    Console.WriteLine("Redirect\n");
+
+                    string location = GetRedirectLocation(header)!;
+                    Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
+
+                    string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
+
+                    if (shouldRedirect == "YES") 
+                    {
+                        DefineHost(location);
+                        await SendAsync();
+                    }
+                    break;
+                case '4':
+                    Console.WriteLine("Client error\n");
+                    break;
+                case '5':
+                    Console.WriteLine("Server error\n");
+                    break;
+            }
+        }
+
         private static async Task<string> HandleHttpAsync(Stream stream, string query)
         {
             using StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
@@ -154,6 +191,30 @@ namespace ClientHTTP.QueryBuilder
             X509Chain chain, SslPolicyErrors sslPolicyErrors)
         {
             return true;
+        }
+
+        private static string? GetRedirectLocation(string header) 
+        {
+            string[] headerLine = header.Split("\r\n");
+
+            foreach (string line in headerLine) 
+            {
+                string[] splitLine = line.Split(' ');
+
+                if (splitLine[0] == "Location:") 
+                {
+                    string location = splitLine[1];
+
+                    if (location[^1] == '/')
+                    {
+                        location = location[..^1];
+                    }
+
+                    return location;
+                }
+            }
+
+            return null;
         }
     }
 }

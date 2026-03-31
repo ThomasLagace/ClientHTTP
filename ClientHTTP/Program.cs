@@ -6,10 +6,19 @@ namespace ClientHTTP;
 
 internal class Program
 {
-    static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
-        HTTPQueryBuilder queryBuilder = new HTTPQueryBuilder()
+        while (true) 
+        {
+            Console.Clear();
+
+            Console.WriteLine("Search HTTP/HTTPS URL:");
+
+            string host = Console.ReadLine()!.Trim();
+
+            HTTPQueryBuilder queryBuilder = new HTTPQueryBuilder()
             .DefineConnection("close")
+            .DefineHost(host)
             .DefineUserAgent(
                 new SafariBrowser(
                     new ChromeBrowser(
@@ -24,25 +33,21 @@ internal class Program
                     )
                 );
 
-        queryBuilder.OnServerResponse += (response) =>
-        {
-            Console.WriteLine("Response received:");
-            Console.WriteLine(response);
-        };
+            queryBuilder.OnServerResponse += (body) =>
+            {
+                Console.WriteLine("Response received:\n");
+                Console.WriteLine(body);
+            };
 
-        Console.WriteLine("Enter HTTP/HTTPS URL:");
+            queryBuilder.OnServerResponse += async (body) =>
+            {
+                if (Uri.TryCreate(host, UriKind.Absolute, out Uri? uri))
+                    await ResourceSerializer.SerializeAllResources(uri!, body, uri!.Host.ToString() + "/");
+            };
 
-        string host = Console.ReadLine()!.Trim();
-        queryBuilder.DefineHost(host);
+            await queryBuilder.SendAsync();
 
-        queryBuilder.OnServerResponse += async (body) =>
-        {
-            if (Uri.TryCreate(host, UriKind.Absolute, out Uri? uri))
-                await ResourceSerializer.SerializeAllResources(uri!, body, uri!.Host.ToString() + "/");
-        };
-
-        _ = queryBuilder.SendAsync();
-
-        Console.ReadLine();
+            Console.ReadLine();
+        }
     }
 }
