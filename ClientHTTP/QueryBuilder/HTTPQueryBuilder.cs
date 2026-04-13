@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace ClientHTTP.QueryBuilder
 {
@@ -16,7 +17,7 @@ namespace ClientHTTP.QueryBuilder
 
         public async Task SendAsync(bool autoRedirect = false)
         {
-            if (!TryBuildQuery(out string query)) 
+            if (!TryBuildQuery(out string? query)) 
                 return;
 
             Console.WriteLine("Sending query:\n" + query);
@@ -28,17 +29,16 @@ namespace ClientHTTP.QueryBuilder
 
             if (_query.Host!.Domain.Scheme == Uri.UriSchemeHttps)
             {
-                response = await HandleHttpsAsync(stream, _query.Host!.Domain, query);
+                await HandleHttpsAsync(stream, _query.Host!.Domain, query!);
             }
             else
             {
-                response = await HandleHttpAsync(stream, query);
+                await HandleHttpAsync(stream, query!);
             }
 
-            string[] splitResponse = response.Split("\r\n\r\n");
-
-            OnServerResponse?.Invoke(splitResponse[1]);
-            await HandleResponseAsync(splitResponse[0], autoRedirect);
+            // -- MAKE METHODS --
+            // OnServerResponse?.Invoke(splitResponse[1]);
+            // await HandleResponseAsync(splitResponse[0], autoRedirect);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
@@ -114,9 +114,9 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
-        private bool TryBuildQuery(out string queryString)
+        private bool TryBuildQuery(out string? queryString)
         {
-            queryString = string.Empty;
+            queryString = null;
 
             if (!IsQueryValid())
                 return false;
@@ -131,12 +131,28 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
+        private static bool TryGetHeader(string header, out string? value)
+        {
+            value = null;
+
+            string pattern = @"^Location:\s*(.+)$";
+            Match match = Regex.Match(header, pattern);
+
+            if (match.Success) 
+            {
+                value = match.Value;
+                return true;
+            }
+
+            return false;
+        }
+
         private async Task HandleResponseAsync(string header, bool autoRedirect)
         {
             string responseCode = header.Split("\r\n")[0].Split(' ')[1];
 
             Console.Write(responseCode + " - ");
-
+            
             switch (responseCode[0]) 
             {
                 case '2':
@@ -168,18 +184,18 @@ namespace ClientHTTP.QueryBuilder
             }
         }
 
-        private static async Task<string> HandleHttpAsync(Stream stream, string query)
+        private static async Task HandleHttpAsync(Stream stream, string query)
         {
             using StreamWriter writer = new(stream, new UTF8Encoding(false)) { AutoFlush = true };
             await writer.WriteAsync(query);
 
             using StreamReader reader = new(stream, new UTF8Encoding(false));
-            string response = await reader.ReadToEndAsync();
+            byte[] response = await GetResponseAsync(stream);
 
-            return response;
+            await HandleResponseAsync(response);
         }
 
-        private static async Task<string> HandleHttpsAsync(Stream stream, Uri uri, string query)
+        private static async Task HandleHttpsAsync(Stream stream, Uri uri, string query)
         {
             SslStream sslStream = new(stream, false,
                 new RemoteCertificateValidationCallback(ValidateServerCertificate!), null);
@@ -192,8 +208,23 @@ namespace ClientHTTP.QueryBuilder
 
             using StreamReader reader = new(stream, new UTF8Encoding(false));
             byte[] response = await GetResponseAsync(stream);
-            
-            return Encoding.UTF8.GetString(response);
+
+            await HandleResponseAsync(response);
+        }
+
+        private static async Task HandleResponseAsync(byte[] response) 
+        {
+            (byte[] header, byte[] body) = GetSplitResponse(response);
+
+
+        }
+
+        private static (byte[], byte[]) GetSplitResponse(byte[] repsonse) 
+        {
+            byte[] delimiter = Encoding.UTF8.GetBytes("\r\n\r\n");
+
+            // temporary return value
+            return ([], []);
         }
 
         private static async Task<byte[]> GetResponseAsync(Stream stream) 
@@ -211,7 +242,7 @@ namespace ClientHTTP.QueryBuilder
             return responseBytes;
         }
 
-        private static byte[] GetChunkedResponse(byte[] chunkedBody) 
+        private static byte[] OrganizeResponseBody(byte[] chunkedBody) 
         {
             using MemoryStream memStream = new();
             int index = 0;
