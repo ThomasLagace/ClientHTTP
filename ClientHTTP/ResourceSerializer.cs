@@ -1,6 +1,7 @@
 ﻿using ClientHTTP.Parser;
 using ClientHTTP.QueryBuilder;
 using ClientHTTP.QueryBuilder.QueryMetadata;
+using ClientHTTP.QueryBuilder.QueryMetadata.EncodingMetadata;
 using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
 
 namespace ClientHTTP;
@@ -69,6 +70,13 @@ public static class ResourceSerializer
                                         )
                                     )
                                 )
+                            )
+                        )
+                    )
+                    .DefineEncoding(
+                        new BrotliEncoding(
+                            new GzipEncoding(
+                                new Encoding()
                             )
                         )
                     );
