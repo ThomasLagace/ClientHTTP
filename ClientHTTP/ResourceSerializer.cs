@@ -57,7 +57,7 @@ public static class ResourceSerializer
             List<Task> tasks = new();
             foreach (Uri uri in resourceUris)
             {
-                HTTPQueryBuilder httpQueryBuilder = new HTTPQueryBuilder(index: uri.AbsolutePath.ToString())
+                HTTPQueryBuilder httpQueryBuilder = new HTTPQueryBuilder(index: uri.AbsolutePath.ToString(), autoRedirect: true)
                     .DefineHost(uri.Scheme + "://" + uri.Host)
                     .DefineConnection("close")
                     .DefineUserAgent(
@@ -86,7 +86,7 @@ public static class ResourceSerializer
                     await File.WriteAllTextAsync(downloadPath + uri.Segments.Last(), data);
                 };
 
-                tasks.Add(httpQueryBuilder.SendAsync(true));
+                tasks.Add(httpQueryBuilder.SendAsync());
             }
             await Task.WhenAll(tasks);
         };

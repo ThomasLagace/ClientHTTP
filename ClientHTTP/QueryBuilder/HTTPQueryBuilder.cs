@@ -1,4 +1,5 @@
 ﻿using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
+using System.IO.Compression;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -7,15 +8,16 @@ using System.Text.RegularExpressions;
 
 namespace ClientHTTP.QueryBuilder
 {
-    public class HTTPQueryBuilder(string method = "GET", string index = "/", string protocolVersion = "HTTP/1.1")
+    public class HTTPQueryBuilder(string method = "GET", string index = "/", string protocolVersion = "HTTP/1.1", bool autoRedirect = false)
     {
         public string ProtocolVersion { get; init; } = protocolVersion;
         public string Index { get; init; } = index;
         public string Method { get; init; } = method;
         private readonly Query _query = new();
+        private readonly bool _autoRedirect = autoRedirect;
         public event Action<string>? OnServerResponse;
 
-        public async Task SendAsync(bool autoRedirect = false)
+        public async Task SendAsync()
         {
             if (!TryBuildQuery(out string? query)) 
                 return;
@@ -25,8 +27,6 @@ namespace ClientHTTP.QueryBuilder
             using TcpClient client = new(_query.Host!.Domain.Host, _query.Host!.Domain.Port);
             Stream stream = client.GetStream();
 
-            string response;
-
             if (_query.Host!.Domain.Scheme == Uri.UriSchemeHttps)
             {
                 await HandleHttpsAsync(stream, _query.Host!.Domain, query!);
@@ -35,10 +35,6 @@ namespace ClientHTTP.QueryBuilder
             {
                 await HandleHttpAsync(stream, query!);
             }
-
-            // -- MAKE METHODS --
-            // OnServerResponse?.Invoke(splitResponse[1]);
-            // await HandleResponseAsync(splitResponse[0], autoRedirect);
         }
 
         public HTTPQueryBuilder DefineHost(string host)
@@ -131,23 +127,23 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
-        private static bool TryGetHeader(string header, out string? value)
+        private static bool TryGetHeader(string headers, string header, out string? value)
         {
             value = null;
 
-            string pattern = @"^Location:\s*(.+)$";
-            Match match = Regex.Match(header, pattern);
+            string pattern = @$"^{header}:\s*(.+)$";
+            Match match = Regex.Match(headers, pattern);
 
             if (match.Success) 
             {
-                value = match.Value;
+                value = match.Value.Split(' ')[1];
                 return true;
             }
 
             return false;
         }
 
-        private async Task HandleResponseAsync(string header, bool autoRedirect)
+        private async Task HandleStatusAsync(string header, bool autoRedirect)
         {
             string responseCode = header.Split("\r\n")[0].Split(' ')[1];
 
@@ -163,15 +159,17 @@ namespace ClientHTTP.QueryBuilder
 
                     if (!autoRedirect) 
                     {
-                        string location = GetRedirectLocation(header)!;
-                        Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
-
-                        string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
-
-                        if (shouldRedirect == "YES")
+                        if (TryGetHeader(header, "Location", out string? location)) 
                         {
-                            DefineHost(location);
-                            await SendAsync();
+                            Console.WriteLine($"Redirecting to {location} - Proceed?\nYes | No");
+
+                            string? shouldRedirect = Console.ReadLine()?.Trim().ToUpper();
+
+                            if (shouldRedirect == "YES")
+                            {
+                                DefineHost(location!);
+                                await SendAsync();
+                            }
                         }
                     }
                     break;
@@ -184,7 +182,7 @@ namespace ClientHTTP.QueryBuilder
             }
         }
 
-        private static async Task HandleHttpAsync(Stream stream, string query)
+        private async Task HandleHttpAsync(Stream stream, string query)
         {
             using StreamWriter writer = new(stream, new UTF8Encoding(false)) { AutoFlush = true };
             await writer.WriteAsync(query);
@@ -195,7 +193,7 @@ namespace ClientHTTP.QueryBuilder
             await HandleResponseAsync(response);
         }
 
-        private static async Task HandleHttpsAsync(Stream stream, Uri uri, string query)
+        private async Task HandleHttpsAsync(Stream stream, Uri uri, string query)
         {
             SslStream sslStream = new(stream, false,
                 new RemoteCertificateValidationCallback(ValidateServerCertificate!), null);
@@ -212,16 +210,56 @@ namespace ClientHTTP.QueryBuilder
             await HandleResponseAsync(response);
         }
 
-        private static async Task HandleResponseAsync(byte[] response) 
+        private async Task HandleResponseAsync(byte[] response) 
         {
+            Dictionary<string, Func<byte[], Task<string>>> decompressionDispatcher = new Dictionary<string, Func<byte[], Task<string>>>()
+            {
+                { "gzip", DecompressGzipAsync },
+                { "br", DecompressBrotliAsync }
+            };
+
             (byte[] header, byte[] body) = GetSplitResponse(response);
 
+            string headerString = Encoding.UTF8.GetString(header);
 
+            if (TryGetHeader(headerString, "Transfer-Encoding", out string? transferEncoding)
+                && transferEncoding == "chunked") 
+            {
+                body = await OrganizeResponseBodyAsync(body);
+            }
+
+            if (TryGetHeader(headerString, "Content-Encoding", out string? contentEncoding)) 
+            {
+                string bodyString = await decompressionDispatcher[contentEncoding!](body);
+
+                OnServerResponse?.Invoke(bodyString);
+                await HandleStatusAsync(headerString, _autoRedirect);
+            }
+        }
+
+        private static async Task<string> DecompressGzipAsync(byte[] bodyBytes) 
+        {
+            using MemoryStream compressedStream = new(bodyBytes);
+            using GZipStream gzipStream = new(compressedStream, CompressionMode.Decompress);
+            using StreamReader reader = new(gzipStream, Encoding.UTF8);
+
+            return await reader.ReadToEndAsync();
+        }
+
+        private static async Task<string> DecompressBrotliAsync(byte[] bodyBytes) 
+        {
+            using MemoryStream compressedStream = new(bodyBytes);
+            using BrotliStream brStream = new(compressedStream, CompressionMode.Decompress);
+            using StreamReader reader = new(brStream, Encoding.UTF8);
+
+            return await reader.ReadToEndAsync();
         }
 
         private static (byte[], byte[]) GetSplitResponse(byte[] repsonse) 
         {
             byte[] delimiter = Encoding.UTF8.GetBytes("\r\n\r\n");
+
+
 
             // temporary return value
             return ([], []);
@@ -242,7 +280,7 @@ namespace ClientHTTP.QueryBuilder
             return responseBytes;
         }
 
-        private static byte[] OrganizeResponseBody(byte[] chunkedBody) 
+        private static async Task<byte[]> OrganizeResponseBodyAsync(byte[] chunkedBody) 
         {
             using MemoryStream memStream = new();
             int index = 0;
@@ -257,7 +295,7 @@ namespace ClientHTTP.QueryBuilder
                     break;
 
                 index = chunkSizeEnd + 2;
-                memStream.Write(chunkedBody, index, chunkSize);
+                await memStream.WriteAsync(chunkedBody.AsMemory(index, chunkSize));
 
                 index += chunkSize + 2;
             }
@@ -269,30 +307,6 @@ namespace ClientHTTP.QueryBuilder
             X509Chain chain, SslPolicyErrors sslPolicyErrors)
         {
             return true;
-        }
-
-        private static string? GetRedirectLocation(string header) 
-        {
-            string[] headerLine = header.Split("\r\n");
-
-            foreach (string line in headerLine) 
-            {
-                string[] splitLine = line.Split(' ');
-
-                if (splitLine[0] == "Location:") 
-                {
-                    string location = splitLine[1];
-
-                    if (location[^1] == '/')
-                    {
-                        location = location[..^1];
-                    }
-
-                    return location;
-                }
-            }
-
-            return null;
         }
     }
 }
