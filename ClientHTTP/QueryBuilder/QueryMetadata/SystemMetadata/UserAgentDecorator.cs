@@ -2,16 +2,16 @@
 {
     public abstract class UserAgentDecorator : SystemInfo
     {
-        private SystemInfo browser;
+        private readonly SystemInfo _browser;
 
         public UserAgentDecorator(SystemInfo browser)
         {
-            this.browser = browser;
+            _browser = browser;
         }
 
         public virtual string Stringify()
         {
-            return browser.Stringify();
+            return _browser.Stringify();
         }
     }
 }

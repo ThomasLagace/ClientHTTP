@@ -8,6 +8,7 @@ namespace ClientHTTP.QueryBuilder
         public Host? Host { get; private set; }
         public Connection? Connection { get; private set; }
         public SystemInfo? UserAgent { get; private set; }
+        public SystemInfo? Encoding { get; private set; }
 
         public void SetConnection(string behaviour) 
         {
@@ -22,6 +23,11 @@ namespace ClientHTTP.QueryBuilder
         public void SetUserAgent(SystemInfo info)
         {
             UserAgent = info;
+        }
+
+        public void SetEncoding(SystemInfo info) 
+        {
+            Encoding = info;
         }
     }
 }

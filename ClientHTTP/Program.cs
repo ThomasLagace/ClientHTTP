@@ -1,5 +1,6 @@
 ﻿using ClientHTTP.QueryBuilder;
 using ClientHTTP.QueryBuilder.QueryMetadata;
+using ClientHTTP.QueryBuilder.QueryMetadata.EncodingMetadata;
 using ClientHTTP.QueryBuilder.QueryMetadata.SystemMetadata;
 
 namespace ClientHTTP;
@@ -17,18 +18,25 @@ internal class Program
             string host = Console.ReadLine()!.Trim();
 
             HTTPQueryBuilder queryBuilder = new HTTPQueryBuilder()
-            .DefineConnection("close")
-            .DefineHost(host)
-            .DefineUserAgent(
-                new SafariBrowser(
-                    new ChromeBrowser(
-                        new Engine(
-                            new QueryBuilder.QueryMetadata.SystemMetadata.OperatingSystem(
-                                new Mozilla(
-                                    new UserAgent()
+                .DefineConnection("close")
+                .DefineHost(host)
+                .DefineUserAgent(
+                    new SafariBrowser(
+                        new ChromeBrowser(
+                            new Engine(
+                                new QueryBuilder.QueryMetadata.SystemMetadata.OperatingSystem(
+                                    new Mozilla(
+                                        new UserAgent()
                                     )
                                 )
                             )
+                        )
+                    )
+                )
+                .DefineEncoding(
+                    new BrotliEncoding(
+                        new GzipEncoding(
+                            new Encoding()
                         )
                     )
                 );
