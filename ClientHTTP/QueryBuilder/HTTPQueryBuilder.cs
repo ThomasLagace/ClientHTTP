@@ -131,16 +131,15 @@ namespace ClientHTTP.QueryBuilder
         {
             value = null;
 
-            string pattern = @$"^{header}:\s*(.+)$";
-            Match match = Regex.Match(headers, pattern);
+            string pattern = @$"^{Regex.Escape(header)}:\s*([^\r\n]+)";
+            Match match = Regex.Match(headers, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
-            if (match.Success) 
-            {
-                value = match.Value.Split(' ')[1];
-                return true;
-            }
+            if (!match.Success)
+                return false;
 
-            return false;
+            value = match.Groups[1].Value.Trim();
+
+            return true;
         }
 
         private async Task HandleStatusAsync(string header, bool autoRedirect)
@@ -210,7 +209,7 @@ namespace ClientHTTP.QueryBuilder
             await HandleResponseAsync(response);
         }
 
-        private async Task HandleResponseAsync(byte[] response) 
+        private async Task HandleResponseAsync(byte[] response)
         {
             Dictionary<string, Func<byte[], Task<string>>> decompressionDispatcher = new Dictionary<string, Func<byte[], Task<string>>>()
             {
@@ -218,19 +217,24 @@ namespace ClientHTTP.QueryBuilder
                 { "br", DecompressBrotliAsync }
             };
 
-            (byte[] header, byte[] body) = GetSplitResponse(response);
-
-            string headerString = Encoding.UTF8.GetString(header);
-
-            if (TryGetHeader(headerString, "Transfer-Encoding", out string? transferEncoding)
-                && transferEncoding == "chunked") 
+            if (TryGetSplitResponse(response, out (byte[] header, byte[] body)? splitResponse))
             {
-                body = await OrganizeResponseBodyAsync(body);
-            }
+                byte[] header = splitResponse!.Value.header;
+                byte[] body = splitResponse!.Value.body;
 
-            if (TryGetHeader(headerString, "Content-Encoding", out string? contentEncoding)) 
-            {
-                string bodyString = await decompressionDispatcher[contentEncoding!](body);
+                string headerString = Encoding.UTF8.GetString(header);
+                string bodyString = Encoding.UTF8.GetString(body);
+
+                if (TryGetHeader(headerString, "Transfer-Encoding", out string? transferEncoding)
+                    && transferEncoding!.Contains("chunked"))
+                {
+                    body = await OrganizeResponseBodyAsync(body);
+                }
+
+                if (TryGetHeader(headerString, "Content-Encoding", out string? contentEncoding))
+                {
+                    bodyString = await decompressionDispatcher[contentEncoding!](body);
+                }
 
                 OnServerResponse?.Invoke(bodyString);
                 await HandleStatusAsync(headerString, _autoRedirect);
@@ -255,17 +259,32 @@ namespace ClientHTTP.QueryBuilder
             return await reader.ReadToEndAsync();
         }
 
-        private static (byte[], byte[]) GetSplitResponse(byte[] repsonse) 
+        private static bool TryGetSplitResponse(byte[] response, out (byte[] header, byte[] body)? splitResponse) 
         {
+            splitResponse = null;
+
             byte[] delimiter = Encoding.UTF8.GetBytes("\r\n\r\n");
 
+            ReadOnlySpan<byte> responseSpan = response;
+            int index = responseSpan.IndexOf(delimiter);
 
+            if (index != -1)
+            {
+                splitResponse = (
+                    responseSpan[..index].ToArray(), 
+                    responseSpan[(index + 1)..].ToArray()
+                );
 
-            // temporary return value
-            return ([], []);
+                return true;
+            }
+            else 
+            {
+                Console.WriteLine("Parsing error : Failed to find header delimiter.");
+                return false;
+            }
         }
 
-        private static async Task<byte[]> GetResponseAsync(Stream stream) 
+        private static async Task<byte[]> GetResponseAsync(Stream stream)
         {
             using MemoryStream memStream = new();
             byte[] buffer = new byte[4096];
