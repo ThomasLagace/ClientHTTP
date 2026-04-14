@@ -107,6 +107,12 @@ namespace ClientHTTP.QueryBuilder
                 return false;
             }
 
+            if (String.IsNullOrEmpty(_query.Encoding?.Stringify())) 
+            {
+                Console.WriteLine("Query dropped - Encoding unspecified.");
+                return false;
+            }
+
             return true;
         }
 
@@ -142,7 +148,7 @@ namespace ClientHTTP.QueryBuilder
             return true;
         }
 
-        private async Task HandleStatusAsync(string header, bool autoRedirect)
+        private async Task HandleStatusAsync(string header)
         {
             string responseCode = header.Split("\r\n")[0].Split(' ')[1];
 
@@ -156,7 +162,7 @@ namespace ClientHTTP.QueryBuilder
                 case '3':
                     Console.WriteLine("Redirect\n");
 
-                    if (!autoRedirect) 
+                    if (!_autoRedirect) 
                     {
                         if (TryGetHeader(header, "Location", out string? location)) 
                         {
@@ -217,10 +223,10 @@ namespace ClientHTTP.QueryBuilder
                 { "br", DecompressBrotliAsync }
             };
 
-            if (TryGetSplitResponse(response, out (byte[] header, byte[] body)? splitResponse))
+            if (TryGetSplitResponse(response, out (byte[] Header, byte[] Body)? splitResponse))
             {
-                byte[] header = splitResponse!.Value.header;
-                byte[] body = splitResponse!.Value.body;
+                byte[] header = splitResponse!.Value.Header;
+                byte[] body = splitResponse!.Value.Body;
 
                 string headerString = Encoding.UTF8.GetString(header);
                 string bodyString = Encoding.UTF8.GetString(body);
@@ -233,19 +239,19 @@ namespace ClientHTTP.QueryBuilder
 
                 if (TryGetHeader(headerString, "Content-Encoding", out string? contentEncoding))
                 {
-                    bodyString = await decompressionDispatcher[contentEncoding!](body);
+                    bodyString = await decompressionDispatcher[contentEncoding!.ToLower()](body);
                 }
 
                 OnServerResponse?.Invoke(bodyString);
-                await HandleStatusAsync(headerString, _autoRedirect);
+                await HandleStatusAsync(headerString);
             }
         }
 
         private static async Task<string> DecompressGzipAsync(byte[] bodyBytes) 
         {
             using MemoryStream compressedStream = new(bodyBytes);
-            using GZipStream gzipStream = new(compressedStream, CompressionMode.Decompress);
-            using StreamReader reader = new(gzipStream, Encoding.UTF8);
+            using GZipStream decompressor = new(compressedStream, CompressionMode.Decompress);
+            using StreamReader reader = new(decompressor, Encoding.UTF8);
 
             return await reader.ReadToEndAsync();
         }
@@ -253,13 +259,12 @@ namespace ClientHTTP.QueryBuilder
         private static async Task<string> DecompressBrotliAsync(byte[] bodyBytes) 
         {
             using MemoryStream compressedStream = new(bodyBytes);
-            using BrotliStream brStream = new(compressedStream, CompressionMode.Decompress);
-            using StreamReader reader = new(brStream, Encoding.UTF8);
-
+            using BrotliStream decompressor = new(compressedStream, CompressionMode.Decompress);
+            using StreamReader reader = new(decompressor, Encoding.UTF8);
             return await reader.ReadToEndAsync();
         }
 
-        private static bool TryGetSplitResponse(byte[] response, out (byte[] header, byte[] body)? splitResponse) 
+        private static bool TryGetSplitResponse(byte[] response, out (byte[] Header, byte[] Body)? splitResponse) 
         {
             splitResponse = null;
 
@@ -279,7 +284,7 @@ namespace ClientHTTP.QueryBuilder
             }
             else 
             {
-                Console.WriteLine("Parsing error : Failed to find header delimiter.");
+                Console.WriteLine("Parsing error - Failed to find header delimiter.\n");
                 return false;
             }
         }
@@ -303,16 +308,20 @@ namespace ClientHTTP.QueryBuilder
         {
             using MemoryStream memStream = new();
             int index = 0;
-
-            while (index < chunkedBody.Length) 
+            while (index < chunkedBody.Length)
             {
                 int chunkSizeEnd = Array.IndexOf(chunkedBody, (byte)'\r', index);
-                if (chunkSizeEnd == -1) break;
-
-                string chunkSizeHex = Encoding.UTF8.GetString(chunkedBody, index, chunkSizeEnd - index);
-                if (!int.TryParse(chunkSizeHex, System.Globalization.NumberStyles.HexNumber, null, out int chunkSize) || chunkSize == 0)
+                if (chunkSizeEnd == -1)
                     break;
 
+                string chunkSizeHex = Encoding.UTF8.GetString(chunkedBody, index, chunkSizeEnd - index);
+
+                if (!int.TryParse(chunkSizeHex, System.Globalization.NumberStyles.HexNumber, null, out int chunkSize) || chunkSize == 0) 
+                {
+                    Console.WriteLine("Parsing error - Failed to obtain chunk size.");
+                    break;
+                }
+                    
                 index = chunkSizeEnd + 2;
                 await memStream.WriteAsync(chunkedBody.AsMemory(index, chunkSize));
 
