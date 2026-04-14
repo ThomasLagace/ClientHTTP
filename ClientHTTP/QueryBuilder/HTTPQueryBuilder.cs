@@ -277,7 +277,7 @@ namespace ClientHTTP.QueryBuilder
             {
                 splitResponse = (
                     responseSpan[..index].ToArray(), 
-                    responseSpan[(index + 1)..].ToArray()
+                    responseSpan[(index + 4)..].ToArray()
                 );
 
                 return true;
@@ -321,7 +321,7 @@ namespace ClientHTTP.QueryBuilder
                     Console.WriteLine("Parsing error - Failed to obtain chunk size.");
                     break;
                 }
-                    
+                
                 index = chunkSizeEnd + 2;
                 await memStream.WriteAsync(chunkedBody.AsMemory(index, chunkSize));
 
